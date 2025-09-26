@@ -131,7 +131,7 @@ export default function AdminPage() {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-slate-900 dark:border-white mx-auto"></div>
           <p className="mt-4 text-gray-600">Loading...</p>
         </div>
       </div>
@@ -143,28 +143,22 @@ export default function AdminPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center">
-              <Button
-                variant="ghost"
-                onClick={() => router.push('/dashboard')}
-                className="mr-4"
-              >
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Back to Dashboard
-              </Button>
-              <Settings className="h-8 w-8 text-blue-600 mr-3" />
-              <h1 className="text-xl font-semibold text-gray-900">Admin Panel</h1>
-            </div>
-          </div>
-        </div>
-      </header>
-
+    <div className="min-h-screen bg-gradient-to-b from-background to-slate-50 dark:to-slate-900">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="mb-6 flex items-center">
+          <Button
+            variant="ghost"
+            onClick={() => router.push('/dashboard')}
+            className="mr-4"
+          >
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back to Dashboard
+          </Button>
+          <Settings className="h-8 w-8 text-slate-900 dark:text-white mr-3" />
+          <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Admin Panel</h1>
+        </div>
+
+        <div className="space-y-6">
         <Tabs defaultValue="access-codes" className="space-y-6">
           <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="access-codes">Access Codes</TabsTrigger>
@@ -329,6 +323,7 @@ export default function AdminPage() {
             {success}
           </div>
         )}
+        </div>
       </div>
     </div>
   );

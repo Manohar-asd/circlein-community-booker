@@ -59,11 +59,11 @@ export default function SetupPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-background to-slate-50 dark:to-slate-900 p-4">
       <Card className="w-full max-w-2xl">
         <CardHeader className="text-center">
           <div className="flex justify-center mb-4">
-            <Settings className="h-12 w-12 text-blue-600" />
+            <Settings className="h-12 w-12 text-slate-900 dark:text-white" />
           </div>
           <CardTitle className="text-2xl font-bold">CircleIn Setup</CardTitle>
           <CardDescription>
