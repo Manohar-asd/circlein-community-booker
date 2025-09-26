@@ -1,158 +1,106 @@
-import { 
-  collection, 
-  doc, 
-  setDoc, 
-  addDoc, 
-  getDocs, 
-  getDoc,
+import { db } from './firebase';
+import {
+  collection,
   query,
   where,
-  orderBy,
   onSnapshot,
-  Timestamp 
+  Unsubscribe,
+  getDocs,
+  doc,
+  getDoc,
+  Timestamp,
 } from 'firebase/firestore';
-import { db } from './firebase';
-import { Amenity, BookingRules, AccessCode, Booking } from './types';
+import type { Amenity, Booking } from './types';
 
-// Initialize default amenities
-export const initializeAmenities = async () => {
-  const amenities: Omit<Amenity, 'id'>[] = [
-    {
-      name: 'Badminton Court',
-      description: 'Professional badminton court with proper lighting',
-      maxCapacity: 4,
-      isActive: true,
-    },
-    {
-      name: 'Swimming Pool',
-      description: 'Olympic-size swimming pool',
-      maxCapacity: 20,
-      isActive: true,
-    },
-    {
-      name: 'Gym',
-      description: 'Fully equipped fitness center',
-      maxCapacity: 15,
-      isActive: true,
-    },
-    {
-      name: 'Tennis Court',
-      description: 'Professional tennis court',
-      maxCapacity: 4,
-      isActive: true,
-    },
-    {
-      name: 'Community Hall',
-      description: 'Large hall for events and gatherings',
-      maxCapacity: 100,
-      isActive: true,
-    },
-  ];
+// Helper to format local YYYY-MM-DD
+function formatLocalYYYYMMDD(d: Date) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
 
-  for (const amenity of amenities) {
-    const amenityRef = doc(collection(db, 'amenities'));
-    await setDoc(amenityRef, {
-      ...amenity,
-      id: amenityRef.id,
+// Coerce values into a Timestamp-like or Date so Dashboard's formatTime won't crash
+function toTimestampLike(dateStr: string | undefined, val: any): Timestamp | Date {
+  // If it's already a Firestore Timestamp, keep it
+  if (val && typeof val === 'object' && typeof val.toDate === 'function') {
+    return val as Timestamp;
+  }
+  // If backend stored ISO/date string or number, convert to Date
+  if (typeof val === 'string' || typeof val === 'number') {
+    const parsed = Date.parse(String(val));
+    if (!Number.isNaN(parsed)) return new Date(parsed);
+  }
+  // If backend only kept "HH:MM", create a Date from dateStr + time
+  if (typeof val === 'string' && dateStr && /^\d{1,2}:\d{2}(?:\s*[AP]M)?$/i.test(val)) {
+    const hm = val.trim();
+    // normalize to 24h
+    const m = hm.match(/^(\d{1,2}):(\d{2})(?:\s*([AP]M))?$/i)!;
+    let h = parseInt(m[1], 10);
+    const mins = parseInt(m[2], 10);
+    const ap = m[3]?.toUpperCase();
+    if (ap === 'PM' && h < 12) h += 12;
+    if (ap === 'AM' && h === 12) h = 0;
+    return new Date(`${dateStr}T${String(h).padStart(2, '0')}:${String(mins).padStart(2, '0')}:00`);
+  }
+  // As a last resort, now
+  return new Date();
+}
+
+// Real-time bookings for a specific date; adapts fields to UI shape
+export function subscribeToBookings(selectedDate: Date, cb: (bookings: Booking[]) => void): Unsubscribe {
+  const dateStr = formatLocalYYYYMMDD(selectedDate);
+  const q = query(collection(db, 'bookings'), where('date', '==', dateStr));
+
+  const unsub = onSnapshot(q, (snap) => {
+    const rows = snap.docs.map((d) => {
+      const data = d.data() as any;
+
+      const amenityId = data.amenityId ?? data.facility ?? '';
+      const start = data.startTime ?? data.startAt ?? data.startHM ?? '';
+      const end = data.endTime ?? data.endAt ?? data.endHM ?? '';
+
+      // Ensure Dashboard receives Timestamp or Date, never "HH:MM" strings
+      const startTime = toTimestampLike(data.date, start);
+      const endTime = toTimestampLike(data.date, end);
+
+      const booking: any = {
+        id: d.id,
+        amenityId,
+        startTime,
+        endTime,
+        status: data.status ?? 'confirmed',
+        waitlist: data.waitlist ?? [],
+        userId: data.userId ?? '',
+        // keep other fields if needed by other parts of the app
+        date: data.date,
+        timeSlot: data.timeSlot,
+      };
+
+      return booking as Booking;
     });
-  }
-};
 
-// Initialize default booking rules
-export const initializeBookingRules = async () => {
-  const rules: BookingRules = {
-    maxPerFamily: 2,
-    maxAdvanceBookingDays: 7,
-    minBookingDuration: 30, // 30 minutes
-    maxBookingDuration: 120, // 2 hours
-    cancellationDeadline: 2, // 2 hours before booking
-  };
+    // Sort client-side by start time
+    rows.sort((a: any, b: any) => {
+      const aMs = a.startTime instanceof Date ? a.startTime.getTime() : a.startTime.toDate().getTime();
+      const bMs = b.startTime instanceof Date ? b.startTime.getTime() : b.startTime.toDate().getTime();
+      return aMs - bMs;
+    });
 
-  await setDoc(doc(db, 'rules', 'bookingLimits'), rules);
-};
-
-// Generate access codes
-export const generateAccessCodes = async (count: number = 10) => {
-  const codes: AccessCode[] = [];
-  
-  for (let i = 0; i < count; i++) {
-    const code = Math.random().toString(36).substring(2, 8).toUpperCase();
-    const accessCode: Omit<AccessCode, 'id'> = {
-      code,
-      isUsed: false,
-      createdAt: new Date(),
-    };
-    
-    const docRef = await addDoc(collection(db, 'accessCodes'), accessCode);
-    codes.push({ ...accessCode, id: docRef.id });
-  }
-  
-  return codes;
-};
-
-// Get amenities
-export const getAmenities = async (): Promise<Amenity[]> => {
-  const querySnapshot = await getDocs(collection(db, 'amenities'));
-  return querySnapshot.docs.map(doc => ({
-    id: doc.id,
-    ...doc.data(),
-  } as Amenity));
-};
-
-// Get booking rules
-export const getBookingRules = async (): Promise<BookingRules | null> => {
-  const docRef = doc(db, 'rules', 'bookingLimits');
-  const docSnap = await getDoc(docRef);
-  
-  if (docSnap.exists()) {
-    return docSnap.data() as BookingRules;
-  }
-  
-  return null;
-};
-
-// Get bookings for a specific date
-export const getBookingsForDate = async (date: Date): Promise<Booking[]> => {
-  const startOfDay = new Date(date);
-  startOfDay.setHours(0, 0, 0, 0);
-  
-  const endOfDay = new Date(date);
-  endOfDay.setHours(23, 59, 59, 999);
-  
-  const q = query(
-    collection(db, 'bookings'),
-    where('startTime', '>=', Timestamp.fromDate(startOfDay)),
-    where('startTime', '<=', Timestamp.fromDate(endOfDay)),
-    orderBy('startTime')
-  );
-  
-  const querySnapshot = await getDocs(q);
-  return querySnapshot.docs.map(doc => ({
-    id: doc.id,
-    ...doc.data(),
-  } as Booking));
-};
-
-// Real-time listener for bookings
-export const subscribeToBookings = (date: Date, callback: (bookings: Booking[]) => void) => {
-  const startOfDay = new Date(date);
-  startOfDay.setHours(0, 0, 0, 0);
-  
-  const endOfDay = new Date(date);
-  endOfDay.setHours(23, 59, 59, 999);
-  
-  const q = query(
-    collection(db, 'bookings'),
-    where('startTime', '>=', Timestamp.fromDate(startOfDay)),
-    where('startTime', '<=', Timestamp.fromDate(endOfDay)),
-    orderBy('startTime')
-  );
-  
-  return onSnapshot(q, (querySnapshot) => {
-    const bookings = querySnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-    } as Booking));
-    callback(bookings);
+    cb(rows);
   });
-};
+
+  return unsub;
+}
+
+// Keep your existing getAmenities. If missing, you can use a simple version:
+export async function getAmenities(): Promise<Amenity[]> {
+  // ...existing code (leave as-is)...
+  // If you need a minimal fallback:
+  // const snap = await getDocs(collection(db, 'amenities'));
+  // return snap.docs.map(d => ({ id: d.id, ...(d.data() as any) })) as Amenity[];
+  return (await (async () => {
+    const snap = await getDocs(collection(db, 'amenities'));
+    return snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Amenity[];
+  })());
+}

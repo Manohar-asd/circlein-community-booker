@@ -47,6 +47,13 @@ export default function BookPage() {
     loadAmenities();
   }, [session, status, router]);
 
+  function formatLocalYYYYMMDD(d: Date) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
@@ -54,57 +61,37 @@ export default function BookPage() {
     setSuccess('');
 
     if (!selectedAmenity || !startTime || !endTime) {
-      setError('Please fill in all fields');
+      setError('Please select amenity, start and end time.');
       setIsLoading(false);
       return;
     }
 
-    // Combine date and time
-    const [startHour, startMinute] = startTime.split(':').map(Number);
-    const [endHour, endMinute] = endTime.split(':').map(Number);
+    // Resolve amenity name for display
+    const amenity = amenities.find(a => a.id === selectedAmenity);
+    const facilityName = amenity?.name ?? amenity?.title ?? '';
 
-    const startDateTime = new Date(selectedDate);
-    startDateTime.setHours(startHour, startMinute, 0, 0);
+    const res = await fetch('/api/bookings/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        facility: selectedAmenity,
+        facilityName,
+        date: formatLocalYYYYMMDD(selectedDate),
+        timeSlot: `${startTime} - ${endTime}`,
+      }),
+    });
+    const data = await res.json();
 
-    const endDateTime = new Date(selectedDate);
-    endDateTime.setHours(endHour, endMinute, 0, 0);
-
-    if (endDateTime <= startDateTime) {
-      setError('End time must be after start time');
-      setIsLoading(false);
-      return;
+    if (res.ok && data.success) {
+      setSuccess('Booking created successfully');
+      setSelectedAmenity('');
+      setStartTime('');
+      setEndTime('');
+    } else {
+      setError(data.error || 'Failed to create booking');
     }
 
-    try {
-      const response = await fetch('/api/bookings/create', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          amenityId: selectedAmenity,
-          startTime: startDateTime.toISOString(),
-          endTime: endDateTime.toISOString(),
-        }),
-      });
-
-      const data = await response.json();
-
-      if (data.success) {
-        setSuccess(data.data.message);
-        // Reset form
-        setSelectedAmenity('');
-        setStartTime('');
-        setEndTime('');
-        setSelectedDate(new Date());
-      } else {
-        setError(data.error || 'Failed to create booking');
-      }
-    } catch (error) {
-      setError('An error occurred. Please try again.');
-    } finally {
-      setIsLoading(false);
-    }
+    setIsLoading(false);
   };
 
   const generateTimeSlots = () => {
@@ -120,11 +107,22 @@ export default function BookPage() {
 
   const timeSlots = generateTimeSlots();
 
+  const isDateDisabled = (date: Date) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const maxDate = new Date();
+    maxDate.setDate(maxDate.getDate() + 7);
+    maxDate.setHours(23, 59, 59, 999);
+    
+    return date < today || date > maxDate;
+  };
+
   if (status === 'loading') {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-slate-900 dark:border-white mx-auto"></div>
           <p className="mt-4 text-gray-600">Loading...</p>
         </div>
       </div>
@@ -136,28 +134,20 @@ export default function BookPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center">
-              <Button
-                variant="ghost"
-                onClick={() => router.push('/dashboard')}
-                className="mr-4"
-              >
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Back to Dashboard
-              </Button>
-              <CalendarIcon className="h-8 w-8 text-blue-600 mr-3" />
-              <h1 className="text-xl font-semibold text-gray-900">New Booking</h1>
-            </div>
-          </div>
-        </div>
-      </header>
-
+    <div className="min-h-screen bg-gradient-to-b from-background to-slate-50 dark:to-slate-900">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="mb-6 flex items-center">
+          <Button
+            variant="ghost"
+            onClick={() => router.push('/dashboard')}
+            className="mr-4"
+          >
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back to Dashboard
+          </Button>
+          <CalendarIcon className="h-8 w-8 text-slate-900 dark:text-white mr-3" />
+          <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">New Booking</h1>
+        </div>
         <Card>
           <CardHeader>
             <CardTitle>Create a New Booking</CardTitle>
@@ -192,7 +182,7 @@ export default function BookPage() {
                     mode="single"
                     selected={selectedDate}
                     onSelect={(date) => date && setSelectedDate(date)}
-                    disabled={(date) => date < new Date() || date > addDays(new Date(), 7)}
+                    disabled={isDateDisabled}
                     className="rounded-md border"
                   />
                 </div>

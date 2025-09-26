@@ -21,22 +21,25 @@ export interface AccessCode {
 export interface Amenity {
   id: string;
   name: string;
-  description?: string;
-  maxCapacity: number;
-  isActive: boolean;
+  [key: string]: any;
 }
+
+// Firestore timestamp-like type
+export type FirestoreTsLike = { toDate: () => Date } & Record<string, any>;
 
 // Booking types
 export interface Booking {
   id: string;
-  userId: string;
   amenityId: string;
-  startTime: Date | { toDate?: () => Date };
-  endTime: Date | { toDate?: () => Date };
-  status: 'confirmed' | 'cancelled' | 'waitlist';
-  waitlist?: string[]; // Array of user IDs on waitlist
-  createdAt: Date;
-  updatedAt: Date;
+  startTime: Date | FirestoreTsLike;
+  endTime: Date | FirestoreTsLike;
+  status: 'confirmed' | 'waitlist' | 'cancelled' | string;
+  waitlist?: { userId: string; userName?: string }[];
+  userId: string;
+  // Optional extras kept for compatibility
+  date?: string;
+  timeSlot?: string;
+  [key: string]: any;
 }
 
 // Rules types

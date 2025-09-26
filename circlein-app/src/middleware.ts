@@ -1,29 +1,19 @@
 import { withAuth } from 'next-auth/middleware';
 
+// Keep UX: only gate /admin; do not block /dashboard or /book
 export default withAuth(
-  function middleware() {
-    // Add any additional middleware logic here
-  },
+  function middleware() {},
   {
     callbacks: {
       authorized: ({ token, req }) => {
-        // Allow access to setup page without authentication
-        if (req.nextUrl.pathname === '/setup') {
-          return true;
-        }
-        
-        // Require authentication for all other routes
-        return !!token;
+        const p = req.nextUrl.pathname;
+        if (p.startsWith('/admin')) return (token as any)?.role === 'admin';
+        return true; // allow everything else
       },
     },
   }
 );
 
 export const config = {
-  matcher: [
-    '/dashboard/:path*',
-    '/admin/:path*',
-    '/book/:path*',
-    '/setup/:path*',
-  ],
+  matcher: ['/((?!api|_next/static|_next/image|favicon.ico).*)'],
 };

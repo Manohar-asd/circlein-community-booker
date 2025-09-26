@@ -1,81 +1,51 @@
-import NextAuth from 'next-auth';
+import NextAuth, { NextAuthOptions } from 'next-auth';
 import GoogleProvider from 'next-auth/providers/google';
-import CredentialsProvider from 'next-auth/providers/credentials';
-import { signInWithEmailAndPassword } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
-import { auth, db } from '@/lib/firebase';
+import { db } from '@/lib/firebase';
+import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 
-const handler = NextAuth({
+if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
+  throw new Error('Missing required Google OAuth environment variables');
+}
+
+export const authOptions: NextAuthOptions = {
   providers: [
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
     }),
-    CredentialsProvider({
-      name: 'credentials',
-      credentials: {
-        email: { label: 'Email', type: 'email' },
-        password: { label: 'Password', type: 'password' },
-      },
-      async authorize(credentials) {
-        if (!credentials?.email || !credentials?.password) {
-          return null;
-        }
-
-        try {
-          // Sign in with Firebase Auth
-          const userCredential = await signInWithEmailAndPassword(
-            auth,
-            credentials.email,
-            credentials.password
-          );
-
-          const user = userCredential.user;
-
-          // Get user data from Firestore
-          const userDoc = await getDoc(doc(db, 'users', user.uid));
-          const userData = userDoc.data();
-
-          if (!userData) {
-            return null;
-          }
-
-          return {
-            id: user.uid,
-            email: user.email,
-            name: userData.name,
-            role: userData.role || 'resident',
-          };
-        } catch (error) {
-          console.error('Authentication error:', error);
-          return null;
-        }
-      },
-    }),
   ],
+  session: { strategy: 'jwt' },
+  pages: { signIn: '/', error: '/' },
   callbacks: {
-    async jwt({ token, user }) {
-      if (user) {
-        token.role = (user as { role: string }).role;
-        token.id = user.id;
-      }
+    async jwt({ token, user, account, profile }) {
+      // Normalize an id on the JWT
+      const uid =
+        (user as any)?.id ||
+        (user as any)?.uid ||
+        (token as any)?.id ||
+        token.sub ||
+        (profile as any)?.sub ||
+        null;
+      if (uid) (token as any).id = uid;
+
+      // Optional role normalization
+      const role =
+        (user as any)?.role ||
+        (token as any)?.role ||
+        (profile as any)?.role ||
+        'user';
+      (token as any).role = role;
+
       return token;
     },
     async session({ session, token }) {
-      if (token) {
-        session.user.id = token.id as string;
-        session.user.role = token.role as string;
-      }
+      // Expose id and role on session.user
+      (session.user as any).id = (token as any).id || token.sub || session.user?.email || null;
+      (session.user as any).role = (token as any).role || 'user';
       return session;
     },
   },
-  pages: {
-    signIn: '/',
-    error: '/',
-  },
-  session: {
-    strategy: 'jwt',
-  },
-});
+};
 
+const handler = NextAuth(authOptions);
 export { handler as GET, handler as POST };
